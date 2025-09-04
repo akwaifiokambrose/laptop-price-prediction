@@ -1,0 +1,18 @@
+from setuptools import setup
+
+setup(
+    name="laptop-price-prediction",
+    version="0.1",
+    description="Laptop price prediction model",
+    author="Your Name",
+    author_email="your-email@example.com",
+    install_requires=[
+        "streamlit>=1.49.1",
+        "scikit-learn>=1.3.0",
+        "pandas>=1.5.3",
+        "numpy>=1.24.3",
+        "matplotlib>=3.6.3",
+        "seaborn>=0.11.2",
+        "joblib>=1.3.0"
+    ],
+)
