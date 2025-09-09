@@ -171,10 +171,6 @@ if model_loaded:
             # Display result
             st.success(f"💡 Predicted Price: €{display_price:.2f}")
 
-            # Optional: Add a warning if the model predicted a negative value
-            if predicted_price < 0:
-                st.warning("Note: The model predicted a negative price. The absolute value is shown.")
-
         except ValueError as e:
             st.error(f"Error making prediction: {e}. Please check the input data format.")
         except Exception as e:
