@@ -1,0 +1,29 @@
+```
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Models and data
+*.json
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# Dependencies
+pip-wheel-metadata/
+.tox/
+.coverage
+htmlcov/
+
+# Logs
+*.log
+
+# Temporary files
+*.tmp
+*.swp
+*~
+```
