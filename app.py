@@ -3,10 +3,9 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-# Note: joblib is used by scikit-learn's load function
-import joblib
+import json
 
-# Set page config
+# Set page config with caching optimization
 st.set_page_config(page_title="Laptop Price Predictor", page_icon="💻", layout="centered")
 
 # Title and description
@@ -16,18 +15,81 @@ This app predicts the price of a laptop based on its specifications.
 Use the sliders and selectors below to enter your laptop details.
 """)
 
-# Load the trained model
+# Load the trained model with caching for optimal performance
+@st.cache_resource
+def load_model():
+    """Load model parameters from JSON for fast loading"""
+    try:
+        with open('laptop_price_model.json', 'r') as f:
+            model_data = json.load(f)
+        return model_data
+    except FileNotFoundError:
+        # Fallback to pickle if JSON not found
+        import joblib
+        model = joblib.load('laptop_price_model.pkl')
+        return {
+            "type": "LinearRegression",
+            "coefficients": model.coef_.tolist(),
+            "intercept": float(model.intercept_),
+            "feature_names": [
+                "laptop_ID", "Inches", "Company_encoded", "Product_encoded", 
+                "ScreenResolution_encoded", "Cpu_encoded", "Memory_encoded", 
+                "Gpu_encoded", "Weight_encoded", "Screen_Size_Inches",
+                "Weight_KG", "Brand_Popularity", "Has_SSD", "Has_HDD", 
+                "CPU_Brand_Score", "GPU_Brand_Score", "Performance_Score"
+            ]
+        }
+    except Exception as e:
+        raise e
+
+# Cache the feature options to avoid recreating them
+@st.cache_data
+def get_feature_options():
+    """Cache feature options for better performance"""
+    return {
+        "company": {
+            "Apple": 4, "Asus": 5, "Dell": 0, "HP": 1, "Acer": 3,
+            "Lenovo": 2, "MSI": 8, "Microsoft": 6, "Toshiba": 7, "Huawei": 9,
+            "Xiaomi": 10, "Vero": 11, "Chuwi": 12, "Google": 13, "Fujitsu": 14,
+            "LG": 15, "Samsung": 16
+        },
+        "resolution": {
+            "1366x768": 0, "1600x900": 1, "1920x1080": 2, "2160x1440": 3,
+            "2256x1504": 4, "2304x1440": 5, "2496x1664": 6, "2560x1440": 7,
+            "2560x1600": 8, "2736x1824": 9, "2880x1800": 10, "3200x1800": 11,
+            "3840x2160": 12
+        },
+        "cpu": {
+            "Intel Core i3": 10, "Intel Core i5": 11, "Intel Core i7": 12,
+            "Intel Core i9": 13, "AMD Ryzen 3": 20, "AMD Ryzen 5": 21,
+            "AMD Ryzen 7": 22, "AMD Ryzen 9": 23, "Other Intel": 19,
+            "Other AMD": 29, "ARM": 30
+        },
+        "gpu": {
+            "Intel HD Graphics": 0, "Intel UHD Graphics": 1,
+            "NVIDIA GeForce GTX": 10, "NVIDIA GeForce RTX": 11,
+            "AMD Radeon": 20, "AMD Radeon Vega": 21,
+            "NVIDIA Quadro": 12, "NVIDIA MX": 13
+        },
+        "weight_category": {
+            "Ultra Light (<1.5kg)": 0, "Light (1.5-2kg)": 1, 
+            "Medium (2-2.5kg)": 2, "Heavy (>2.5kg)": 3
+        }
+    }
+
+# Load model once (cached)
 model_loaded = False
-model = None
+model_data = None
 try:
-    # Load the model (you'll need to save it first)
-    model = joblib.load('laptop_price_model.pkl')
+    model_data = load_model()
     model_loaded = True
-    # st.success("Model loaded successfully!")
 except FileNotFoundError:
-    st.error("Error loading model: Model file 'laptop_price_model.pkl' not found. Please ensure it exists in the repository.")
+    st.error("Error loading model: Model file not found. Please ensure it exists in the repository.")
 except Exception as e:
     st.error(f"Error loading model: {e}")
+
+# Get cached feature options
+options = get_feature_options()
 
 # Input features
 if model_loaded:
@@ -42,78 +104,40 @@ if model_loaded:
     inches = st.slider("Screen Size (Inches)", 10.0, 20.0, 15.0)
 
     # Feature 3: Company_encoded
-    company_options = {
-        "Apple": 4, "Asus": 5, "Dell": 0, "HP": 1, "Acer": 3,
-        "Lenovo": 2, "MSI": 8, "Microsoft": 6, "Toshiba": 7, "Huawei": 9,
-        "Xiaomi": 10, "Vero": 11, "Chuwi": 12, "Google": 13, "Fujitsu": 14,
-        "LG": 15, "Samsung": 16
-    }
-    company_selected = st.selectbox("Company", list(company_options.keys()))
-    company_encoded = company_options[company_selected]
+    company_selected = st.selectbox("Company", list(options["company"].keys()))
+    company_encoded = options["company"][company_selected]
 
     # Feature 4: Product_encoded (Simplified - use Company or a general category)
-    # Since Product is highly specific, we can map a simplified version or use Company_encoded again
-    # Or ask for a general product line if you have mappings
-    # For simplicity here, we'll use a placeholder or map based on company
-    # You might want to refine this mapping based on your original data
     product_mapping = {
-        "Apple": {"MacBook Air": 40, "MacBook Pro": 41, "MacBook": 42}, # Example
-        "Dell": {"Inspiron": 10, "XPS": 11, "Alienware": 12}, # Example
-        "HP": {"Pavilion": 20, "EliteBook": 21, "ProBook": 22, "Spectre": 23}, # Example
-        "Lenovo": {"ThinkPad": 30, "Yoga": 31, "IdeaPad": 32}, # Example
-        # Add more mappings as needed or use a default
+        "Apple": {"MacBook Air": 40, "MacBook Pro": 41, "MacBook": 42},
+        "Dell": {"Inspiron": 10, "XPS": 11, "Alienware": 12},
+        "HP": {"Pavilion": 20, "EliteBook": 21, "ProBook": 22, "Spectre": 23},
+        "Lenovo": {"ThinkPad": 30, "Yoga": 31, "IdeaPad": 32},
     }
-    # Get possible products for the selected company
     possible_products = product_mapping.get(company_selected, {"General": 999})
     product_selected = st.selectbox("Product Line (Simplified)", list(possible_products.keys()))
     product_encoded = possible_products[product_selected]
 
     # Feature 5: ScreenResolution_encoded
-    resolution_options = {
-        "1366x768": 0, "1600x900": 1, "1920x1080": 2, "2160x1440": 3,
-        "2256x1504": 4, "2304x1440": 5, "2496x1664": 6, "2560x1440": 7,
-        "2560x1600": 8, "2736x1824": 9, "2880x1800": 10, "3200x1800": 11,
-        "3840x2160": 12
-    }
-    resolution_selected = st.selectbox("Screen Resolution", list(resolution_options.keys()))
-    screenresolution_encoded = resolution_options[resolution_selected]
+    resolution_selected = st.selectbox("Screen Resolution", list(options["resolution"].keys()))
+    screenresolution_encoded = options["resolution"][resolution_selected]
 
     # Feature 6: Cpu_encoded
-    cpu_options = {
-        "Intel Core i3": 10, "Intel Core i5": 11, "Intel Core i7": 12,
-        "Intel Core i9": 13, "AMD Ryzen 3": 20, "AMD Ryzen 5": 21,
-        "AMD Ryzen 7": 22, "AMD Ryzen 9": 23, "Other Intel": 19,
-        "Other AMD": 29, "ARM": 30
-    }
-    cpu_selected = st.selectbox("CPU", list(cpu_options.keys()))
-    cpu_encoded = cpu_options[cpu_selected]
+    cpu_selected = st.selectbox("CPU", list(options["cpu"].keys()))
+    cpu_encoded = options["cpu"][cpu_selected]
 
     # Feature 7: Memory_encoded
-    # Assuming mapping like 8GB=0, 16GB=1, etc. You need to check your original encoding.
-    # Let's assume RAM GB slider maps to an encoded value.
     ram_gb = st.slider("RAM (GB)", 2, 64, 8)
-    # Example simple mapping (you need to use your actual mapping)
-    # Let's assume 2GB=0, 4GB=1, 8GB=2, 16GB=3, 32GB=4, 64GB=5
     ram_mapping = {2: 0, 4: 1, 8: 2, 16: 3, 32: 4, 64: 5}
-    memory_encoded = ram_mapping.get(ram_gb, 2) # Default to 8GB encoding if not found
+    memory_encoded = ram_mapping.get(ram_gb, 2)
 
     # Feature 8: Gpu_encoded
-    gpu_options = {
-        "Intel HD Graphics": 0, "Intel UHD Graphics": 1,
-        "NVIDIA GeForce GTX": 10, "NVIDIA GeForce RTX": 11,
-        "AMD Radeon": 20, "AMD Radeon Vega": 21,
-        "NVIDIA Quadro": 12, "NVIDIA MX": 13
-    }
-    gpu_selected = st.selectbox("GPU", list(gpu_options.keys()))
-    gpu_encoded = gpu_options[gpu_selected]
+    gpu_selected = st.selectbox("GPU", list(options["gpu"].keys()))
+    gpu_encoded = options["gpu"][gpu_selected]
 
     # Feature 9: Weight_encoded
-    # This might be the encoded version of weight category or a direct encoding.
-    # If it's based on Weight_KG, we can derive it or ask for a category.
-    # Let's ask for a category for simplicity.
-    weight_cat_options = {"Ultra Light (<1.5kg)": 0, "Light (1.5-2kg)": 1, "Medium (2-2.5kg)": 2, "Heavy (>2.5kg)": 3}
-    weight_cat_selected = st.selectbox("Weight Category", list(weight_cat_options.keys()))
-    weight_encoded = weight_cat_options[weight_cat_selected]
+    weight_cat_selected = st.selectbox("Weight Category", list(options["weight_category"].keys()))
+    weight_encoded = options["weight_category"][weight_cat_selected]
 
     # Feature 10: Screen_Size_Inches (Same as Inches)
     screen_size_inches = inches
@@ -148,33 +172,36 @@ if model_loaded:
     performance_score = cpu_brand_score + gpu_brand_score + (ram_gb / 4.0)
 
 
-    # Predict button
+    # Predict button with caching optimization
+    @st.cache_data
+    def predict_price(coefficients, intercept, input_array):
+        """Cached prediction function"""
+        return sum(c * x for c, x in zip(coefficients, input_array)) + intercept
+    
     if st.button("Predict Price"):
         # Prepare input data IN THE EXACT ORDER THE MODEL EXPECTS
-        # Order: ['laptop_ID', 'Inches', 'Company_encoded', 'Product_encoded', 'ScreenResolution_encoded',
-        #         'Cpu_encoded', 'Memory_encoded', 'Gpu_encoded', 'Weight_encoded', 'Screen_Size_Inches',
-        #         'Weight_KG', 'Brand_Popularity', 'Has_SSD', 'Has_HDD', 'CPU_Brand_Score',
-        #         'GPU_Brand_Score', 'Performance_Score']
-        input_data = np.array([[
+        input_features = [
             laptop_id, inches, company_encoded, product_encoded, screenresolution_encoded,
             cpu_encoded, memory_encoded, gpu_encoded, weight_encoded, screen_size_inches,
             weight_kg, brand_popularity, has_ssd, has_hdd, cpu_brand_score,
             gpu_brand_score, performance_score
-        ]])
+        ]
 
         try:
-            # Make prediction
-            predicted_price = model.predict(input_data)[0]
+            # Make prediction using optimized linear algebra
+            predicted_price = predict_price(
+                tuple(model_data["coefficients"]),  # Convert to tuple for hashing
+                model_data["intercept"],
+                tuple(input_features)  # Convert to tuple for hashing
+            )
             # Use absolute value to ensure non-negative display
             display_price = abs(predicted_price)
 
             # Display result
             st.success(f"💡 Predicted Price: €{display_price:.2f}")
 
-        except ValueError as e:
-            st.error(f"Error making prediction: {e}. Please check the input data format.")
         except Exception as e:
-            st.error(f"An unexpected error occurred during prediction: {e}")
+            st.error(f"Error making prediction: {e}")
 
 else:
     st.warning("⚠️ Model not loaded. Prediction cannot be performed.")
